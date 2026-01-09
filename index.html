@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Siêu Cúp Khởi Động - Fix Đáp Án</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <style>
+        :root { --primary: #2ecc71; --mouse-color: #3498db; --kb-color: #e74c3c; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; overflow: hidden; }
+        
+        /* Màn hình cài đặt */
+        #setup-screen { position: absolute; inset: 0; background: #2c3e50; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+        textarea { width: 80%; height: 250px; border-radius: 10px; padding: 15px; font-size: 16px; border: 4px solid var(--primary); background: #f9f9f9; color: #333; }
+        .btn-start { background: var(--primary); color: white; padding: 15px 40px; border: none; border-radius: 50px; font-size: 24px; font-weight: bold; cursor: pointer; margin-top: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); transition: 0.3s; }
+
+        /* Sân vận động */
+        #game-screen { display: none; width: 100vw; height: 100vh; background: radial-gradient(circle, #2d5a27 0%, #1a3c15 100%); position: relative; }
+        #stadium-header { background: rgba(0,0,0,0.8); padding: 15px; border-bottom: 5px solid #f1c40f; text-align: center; }
+        #question-text { font-size: 34px; color: #fff; text-shadow: 2px 2px 5px #000; font-weight: bold; }
+
+        /* Khung thành & Đáp án */
+        #goal-area { 
+            position: absolute; top: 20%; left: 50%; transform: translateX(-50%); 
+            width: 85%; height: 55%; border: 12px solid #fff; border-bottom: none; 
+            background: rgba(255,255,255,0.1); border-radius: 15px 15px 0 0; 
+            display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; z-index: 5; 
+        }
+        
+        .target { 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer; 
+            transition: 0.3s; 
+            color: white; 
+            border: 1px dashed rgba(255,255,255,0.2); 
+            position: relative; 
+            padding: 30px 15px 15px 15px; /* Tăng padding trên để tránh đè vào nhãn A,B,C,D */
+            text-align: center;
+            overflow: hidden; /* Cắt phần dư thừa nếu quá dài */
+        }
+
+        /* Phần chứa chữ đáp án */
+        .ans-content {
+            font-size: 36px; /* Cố định kích thước chữ lớn */
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            line-height: 1.1;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            word-break: break-word; /* Tự xuống dòng khi gặp từ dài */
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 4; /* Giới hạn tối đa 4 dòng để không tràn khung */
+            -webkit-box-orient: vertical;
+        }
+
+        .target:hover { background: rgba(255,255,255,0.2); }
+        
+        .target-label { 
+            position: absolute; top: 5px; left: 5px; font-size: 20px; 
+            background: rgba(222, 185, 12, 0.9); padding: 2px 12px; border-radius: 5px; color: #000; font-weight: 900;
+            z-index: 10;
+        }
+
+        /* Bóng */
+        #ball { position: absolute; bottom: 8%; left: 50%; width: 80px; height: 80px; font-size: 70px; display: flex; align-items: center; justify-content: center; transform: translateX(-50%); z-index: 10; pointer-events: none; filter: drop-shadow(0 10px 10px rgba(0,0,0,0.5)); transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+        /* Điểm số */
+        #scoreboard { position: absolute; bottom: 0; width: 100%; display: flex; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        .team-score { padding: 15px; border-radius: 20px; font-size: 28px; width: 300px; text-align: center; border: 4px solid #fff; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .mouse-team { background: var(--mouse-color); }
+        .kb-team { background: var(--kb-color); }
+
+        #announcement { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 100px; font-weight: 900; display: none; z-index: 100; text-shadow: 5px 5px 20px #000; text-align: center; width: 100%; }
+        #final-winner { position: absolute; inset: 0; background: rgba(0,0,0,0.95); z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div id="setup-screen">
+    <h1 style="color: #f1c40f;">⚽ HỆ THỐNG QUẢN LÝ CÂU HỎI</h1>
+    <p>Nhập: Câu hỏi | A | B | C | D | Đáp án đúng (0-3)</p>
+    <textarea id="input-data"></textarea>
+    <button class="btn-start" onclick="startGame()">LƯU & BẮT ĐẦU</button>
+</div>
+
+<div id="game-screen">
+    <div id="stadium-header"><div id="question-text"></div></div>
+    <div id="goal-area">
+        <div class="target" onclick="shoot('mouse', 0)" id="t0"><span class="target-label">A</span><div class="ans-content"></div></div>
+        <div class="target" onclick="shoot('mouse', 1)" id="t1"><span class="target-label">B</span><div class="ans-content"></div></div>
+        <div class="target" onclick="shoot('mouse', 2)" id="t2"><span class="target-label">C</span><div class="ans-content"></div></div>
+        <div class="target" onclick="shoot('mouse', 3)" id="t3"><span class="target-label">D</span><div class="ans-content"></div></div>
+    </div>
+    <div id="ball">⚽</div>
+    <div id="scoreboard">
+        <div class="team-score mouse-team">🖱️ CHUỘT: <span id="score-mouse">0</span></div>
+        <div class="team-score kb-team">⌨️ PHÍM (A-D): <span id="score-kb">0</span></div>
+    </div>
+    <div id="announcement">VÀOOO!!!</div>
+</div>
+
+<div id="final-winner">
+    <h1 id="winner-text" style="font-size: 80px; color: gold;"></h1>
+    <p id="final-score" style="font-size: 40px; color: white;"></p>
+    <button class="btn-start" onclick="location.reload()">QUAY LẠI CÀI ĐẶT</button>
+</div>
+
+<audio id="snd-goal" src="https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"></audio>
+<audio id="snd-miss" src="https://assets.mixkit.co/active_storage/sfx/2012/2012-preview.mp3"></audio>
+<audio id="snd-win" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"></audio>
+<audio id="snd-kick" src="https://assets.mixkit.co/active_storage/sfx/2042/2042-preview.mp3"></audio>
+
+<script>
+    let questions = [];
+    let currentQ = 0;
+    let scores = { mouse: 0, kb: 0 };
+    let canShoot = true;
+
+    window.onload = function() {
+        const savedData = localStorage.getItem('soccer_quiz_data');
+        document.getElementById('input-data').value = savedData || "Câu hỏi dài mẫu: Con vật nào sau đây có khả năng bay lượn trên bầu trời xanh ngắt?|Con chim bồ câu trắng đang bay|Con cá voi xanh khổng lồ dưới biển|Con mèo mướp lười biếng nằm ngủ|Con chó con đáng yêu trông nhà|0";
+    };
+
+    function startGame() {
+        const text = document.getElementById('input-data').value.trim();
+        if(!text) return alert("Vui lòng nhập câu hỏi!");
+        localStorage.setItem('soccer_quiz_data', text);
+
+        questions = text.split('\n').filter(l => l.includes('|')).map(line => {
+            const parts = line.split('|');
+            const correct = parts.pop();
+            const opts = parts.slice(1);
+            return { q: parts[0], options: opts, correct: parseInt(correct) };
+        });
+
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('game-screen').style.display = 'block';
+        loadQuestion();
+    }
+
+    function resetBall() {
+        const ball = document.getElementById('ball');
+        ball.style.transition = 'none';
+        ball.style.bottom = '8%'; ball.style.left = '50%'; ball.style.top = 'auto';
+        ball.style.fontSize = '70px'; ball.style.transform = 'translateX(-50%)';
+        void ball.offsetWidth;
+        ball.style.transition = 'all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    }
+
+    function loadQuestion() {
+        if(currentQ >= questions.length) return endMatch();
+        canShoot = true;
+        resetBall();
+
+        document.getElementById('question-text').innerText = `Câu ${currentQ+1}: ${questions[currentQ].q}`;
+        for(let i=0; i<4; i++) {
+            const target = document.getElementById('t'+i);
+            target.querySelector('.ans-content').innerText = questions[currentQ].options[i] || "";
+            target.style.background = "none";
+        }
+    }
+
+    function shoot(team, index) {
+        if (!canShoot) return;
+        canShoot = false;
+        document.getElementById('snd-kick').play().catch(()=>{});
+
+        const ball = document.getElementById('ball');
+        const target = document.getElementById('t' + index).getBoundingClientRect();
+        ball.style.left = (target.left + target.width/2) + 'px';
+        ball.style.top = (target.top + target.height/2) + 'px';
+        ball.style.fontSize = '35px';
+
+        setTimeout(() => {
+            const isCorrect = (index === questions[currentQ].correct);
+            const msg = document.getElementById('announcement');
+            if(isCorrect) {
+                scores[team] += 10;
+                try { document.getElementById('snd-goal').play(); } catch(e){}
+                msg.innerText = "VÀOOO!!!"; msg.style.color = "#f1c40f";
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            } else {
+                scores[team] -= 5;
+                try { document.getElementById('snd-miss').play(); } catch(e){}
+                msg.innerText = "KHÔNG VÀOO!! (-5)"; msg.style.color = "#e74c3c";
+            }
+            document.getElementById('score-' + team).innerText = scores[team];
+            msg.style.display = 'block';
+            setTimeout(() => {
+                msg.style.display = 'none';
+                currentQ++;
+                loadQuestion();
+            }, 2000);
+        }, 500);
+    }
+
+    function endMatch() {
+        const final = document.getElementById('final-winner');
+        final.style.display = 'flex';
+        try { document.getElementById('snd-win').play(); } catch(e){}
+        let winnerMsg = scores.mouse > scores.kb ? "🏆 ĐỘI CHUỘT THẮNG!" : (scores.kb > scores.mouse ? "🏆 ĐỘI PHÍM THẮNG!" : "🤝 HÒA NHAU!");
+        document.getElementById('winner-text').innerText = winnerMsg;
+        document.getElementById('final-score').innerText = `Tỉ số: Chuột ${scores.mouse} - Phím ${scores.kb}`;
+        setInterval(() => { confetti({ particleCount: 100, spread: 100, origin: { y: 0.5 } }); }, 1000);
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if(!canShoot || document.getElementById('setup-screen').style.display !== 'none') return;
+        const key = e.key.toUpperCase();
+        const map = {'A':0, 'B':1, 'C':2, 'D':3};
+        if(map.hasOwnProperty(key)) shoot('kb', map[key]);
+    });
+</script>
+</body>
+</html>
